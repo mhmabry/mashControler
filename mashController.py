@@ -1,11 +1,15 @@
 #!/usr/bin/python3
+print('starting program')
 
 import os
 import glob
 import time
 import pandas as pd
+print('after pandas')
 import RPi.GPIO as GPIO
 from RPLCD import CharLCD
+import matplotlib.pyplot as plt
+print('after imports')
 
 DEBUG = 1
 
@@ -26,7 +30,10 @@ GPIO.setmode(GPIO.BOARD)
 ## 4. Then enter sudo modprobe w1-therm
 ## 5. Change directories to the /sys/bus/w1/devices directory by entering: cd /sys/bus/w1/devices
 ## 6. Now enter ls to list the devices:
-##
+## 7. Now enter cd 28-XXXXXXXXXXXX (change the X’s to your own address)
+##     For example, in my case I would enter: cd 28-000006637696
+## 8. Enter cat w1_slave which will show the raw temperature reading output by the sensor
+## 9. Assign the device number (eg. 28-XXXXXXXXXXXX) to TEMP_ID_1 in code below
 
 ##
 ## thermometer setup
@@ -57,45 +64,64 @@ def read_temp_f():
   if equalsPosition != -1:
       tempRaw = lines[1][equalsPosition+2:]
       tempC = float(tempRaw)/1000.0
-      tempF = str(round((tempC / 5.0) * 9.0 + 32.0, 1))
+      tempF = float(round((tempC / 5.0) * 9.0 + 32.0, 1))
   return tempF
 
 # Dataframe to log temps
-ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
-tempF = 120.1
-tempHist = pd.DataFrame([ts, tempF], columns=['timestamp', 'temp'])
+#ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
+tempHist = pd.DataFrame(columns=['timestamp', 'temp'])
+i = 0
 
 # output file
 #logName = "/var/www/mashTemp-" + time.strftime("%Y-%m-%d") + ".log"
-logName = "/var/www/mashTemp.log"
+#logName = "/var/www/mashTemp.log"
+logName = "mashTemp.log"
 with open(logName, 'w') as mtl:
     date1 = time.strftime("%Y-%m-%d")
     s = 'Mash Temperature Log for ' + date1 + "\n"
     mtl.write(s)
 
-    #Loop to read temp
-    while True:
-        # Generate timestamp
-        ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
-        #read temp
-        tempF = read_temp_f()
+    try:
+        #Loop to read temp
+        while True:
+            # Generate timestamp
+            ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
+            #read temp
+            tempF = read_temp_f()
 
-        #save to dataframe
-        tempHist.append([ts, tempF])
-            
-        ## Write Logfile
-        pstr = ts + " ActualTemp: " +  tempF + "\n"
-        mtl.write(pstr)
-    
-        ## display temp
-    #    lcd.write_string(u'Temp: ' + tempF + u'\n')
+            #save to dataframe
+            tempHist = tempHist.append({'timestamp' : ts, 'temp' : tempF}, ignore_index=True)  # append using dictionary
 
-        ## Write console window
-        if (DEBUG):
-            pstr = ts + " ActualTemp: " +  tempF
-            print(pstr)
+            # create graph
+            # i = (i +1) %12
+            # if (i == 0):
+            #     print(tempHist.tail())
+            #     plt.plot( 'Timestamp', 'Temp F', data=tempHist)
+            #     plt.savefig('plotTemp.png', format='png')
+#            matplotlib(tempHist, )
+
+            ## Write Logfile
+            pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
+            mtl.write(pstr)
     
-        ## sleep til next go round
-        time.sleep(5)
+            ## display temp
+        #    lcd.write_string(u'Temp: ' + tempF + u'\n')
+
+            ## Write console window
+            if (DEBUG):
+                pstr = ts + " ActualTemp: " +  str(tempF)
+                print(pstr)
     
+            ## sleep til next go round
+            time.sleep(5)
+
+    except:
+        plt.plot( 'timestamp', 'temp', data=tempHist)
+        plt.savefig('plotTemp.png', format='png')
+        avg = tempHist['temp'].mean()
+        max = tempHist['temp'].max()
+        min = tempHist['temp'].min()
+        s = "Temp stats:  avg=" + str(avg) + " min=" + str(min) + " max=" + str(max) + "\n"
+        mtl.write(s)
+        
 mtl.closed
