@@ -13,13 +13,6 @@ print('after imports')
 
 DEBUG = 1
 
-# GPIO setup
-GPIO.setmode(GPIO.BOARD)
-
-#LCD setup
-#lcd = CharLCD(cols=16, rows=2, pin_rs=37, pin_e=35, pins_data=[40, 38, 36, 32, 33, 31, 29, 23])
-#lcd.clear()
-
 ##
 ## Instructions for thermometer setup
 ##
@@ -47,6 +40,17 @@ TEMP_ID_1 = '28-80000027bc2f'
 base_dir = '/sys/bus/w1/devices/'
 device_folder = glob.glob(base_dir + TEMP_ID_1)[0]
 device_file = device_folder + '/w1_slave'
+
+# GPIO setup
+GPIO.setmode(GPIO.BOARD)
+
+#LCD setup
+lcd = CharLCD(cols=16, rows=2,
+                      pin_rs=15, pin_rw=18, pin_e=16,
+                      pins_data=[21, 22, 23, 24],
+                      numbering_mode=GPIO.BOARD)
+#lcd.clear()
+#lcd.write_string("Hello masher")
 
 #read temp subroutine
 def readTempRow():
@@ -105,7 +109,11 @@ with open(logName, 'w') as mtl:
             mtl.write(pstr)
     
             ## display temp
-        #    lcd.write_string(u'Temp: ' + tempF + u'\n')
+        
+#            lcd_cursor_pos = (0,0)
+            #lcd.write_string("Temp: " + tempF + unichr(223) + "F")
+#            s = "Temp: " + tempF + unichr(223) + "F"
+#            lcd.write_string(s)
 
             ## Write console window
             if (DEBUG):
