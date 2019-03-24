@@ -1,17 +1,18 @@
 #!/usr/bin/python3
-print('starting program')
+DEBUG = 1
 
+if DEBUG: print('starting program')
 import os
 import glob
 import time
+import sys
+from lcdmodule import LCD
 import pandas as pd
-print('after pandas')
+if DEBUG: print('after pandas')
 import RPi.GPIO as GPIO
-from RPLCD import CharLCD
 import matplotlib.pyplot as plt
-print('after imports')
+if DEBUG: print('after imports')
 
-DEBUG = 1
 
 ##
 ## Instructions for thermometer setup
@@ -36,7 +37,8 @@ os.system('/sbin/modprobe w1-gpio')
 os.system('/sbin/modprobe w1-therm')
 
 #sensor id
-TEMP_ID_1 = '28-80000027bc2f'
+# TEMP_ID_1 = '28-80000027bc2f'   # temp probe from amazon
+TEMP_ID_1 = '28-01186e97a1ff'    # Loose temp sensor
 base_dir = '/sys/bus/w1/devices/'
 device_folder = glob.glob(base_dir + TEMP_ID_1)[0]
 device_file = device_folder + '/w1_slave'
@@ -44,13 +46,9 @@ device_file = device_folder + '/w1_slave'
 # GPIO setup
 GPIO.setmode(GPIO.BOARD)
 
-#LCD setup
-lcd = CharLCD(cols=16, rows=2,
-                      pin_rs=15, pin_rw=18, pin_e=16,
-                      pins_data=[21, 22, 23, 24],
-                      numbering_mode=GPIO.BOARD)
-#lcd.clear()
-#lcd.write_string("Hello masher")
+PINKLED = 12
+GPIO.setup(PINKLED, GPIO.OUT, initial=GPIO.LOW)
+pled = GPIO.PWM(PINKLED, 1)             # freq = 1 Hz
 
 #read temp subroutine
 def readTempRow():
@@ -71,21 +69,28 @@ def read_temp_f():
       tempF = float(round((tempC / 5.0) * 9.0 + 32.0, 1))
   return tempF
 
-# Dataframe to log temps
-#ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
+# Dataframe for log temps
 tempHist = pd.DataFrame(columns=['timestamp', 'temp'])
-i = 0
+
+#instantiate LCD class
+lcd16 = LCD()
+time.sleep(10)                            # display welcome msg
 
 # output file
-#logName = "/var/www/mashTemp-" + time.strftime("%Y-%m-%d") + ".log"
-#logName = "/var/www/mashTemp.log"
 logName = "mashTemp.log"
 with open(logName, 'w') as mtl:
     date1 = time.strftime("%Y-%m-%d")
     s = 'Mash Temperature Log for ' + date1 + "\n"
     mtl.write(s)
 
+    pled.start(50)                        # Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec
+    i = 0
+
     try:
+        # read temp once to get the random temp out of there
+        tempF = read_temp_f()
+        if (DEBUG): print("after read_temp_f call")
+
         #Loop to read temp
         while True:
             # Generate timestamp
@@ -97,23 +102,19 @@ with open(logName, 'w') as mtl:
             tempHist = tempHist.append({'timestamp' : ts, 'temp' : tempF}, ignore_index=True)  # append using dictionary
 
             # create graph
-            # i = (i +1) %12
-            # if (i == 0):
-            #     print(tempHist.tail())
-            #     plt.plot( 'Timestamp', 'Temp F', data=tempHist)
-            #     plt.savefig('plotTemp.png', format='png')
-#            matplotlib(tempHist, )
+            i = (i +1) %12
+            if (i == 0):
+                plt.plot( 'timestamp', 'temp', data=tempHist)
+                plt.savefig('plotTemp.png', format='png')
 
             ## Write Logfile
             pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
             mtl.write(pstr)
     
             ## display temp
-        
-#            lcd_cursor_pos = (0,0)
-            #lcd.write_string("Temp: " + tempF + unichr(223) + "F")
-#            s = "Temp: " + tempF + unichr(223) + "F"
-#            lcd.write_string(s)
+            vv = "Temp: " + str(tempF) + chr(223) + "F"
+            lcd16.clear()
+            lcd16.write_string(vv)
 
             ## Write console window
             if (DEBUG):
@@ -124,6 +125,8 @@ with open(logName, 'w') as mtl:
             time.sleep(5)
 
     except:
+        print("Error= ", sys.exc_info())
+        pled.stop()
         plt.plot( 'timestamp', 'temp', data=tempHist)
         plt.savefig('plotTemp.png', format='png')
         avg = tempHist['temp'].mean()
@@ -131,5 +134,8 @@ with open(logName, 'w') as mtl:
         min = tempHist['temp'].min()
         s = "Temp stats:  avg=" + str(avg) + " min=" + str(min) + " max=" + str(max) + "\n"
         mtl.write(s)
-        
+
 mtl.closed
+pled.stop()
+GPIO.cleanup()
+
