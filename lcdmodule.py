@@ -21,8 +21,8 @@ class LCD():
     def write_string(self, string):
         self.lcd.write_string(string)
 
-    def cursor_pos(self, tuple):
-        self.lcd.cursor_pos(tuple)
+    def cursor_pos(self, x, y):
+        self.lcd.cursor_pos = (x,y)
 
 #LCD setup
 # lcd = CharLCD(cols=16, rows=2,
@@ -30,4 +30,3 @@ class LCD():
 #                       pins_data=[21, 22, 23, 24],
 #                       numbering_mode=GPIO.BOARD,
 #                       compat_mode=True)
-
