@@ -1,13 +1,4 @@
 #!/usr/bin/python3
-### BEGIN INIT INFO
-# Provides:          mashController.py
-# Required-Start:    $local_fs $time $syslog
-# Required-Stop:     $local_fs $time $syslog
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: Mash Controller 
-# Description:       Fires up mash controller at boot
-### END INIT INFO
 
 DEBUG = 1
 
@@ -16,6 +7,9 @@ import os
 import time
 import sys
 sys.path.append("/home/pi")               # to find local modules from init.d dir
+# sys.path.append("/home/pi/.local/lib/python3.5/site-packages")
+# Sys.path.append("/home/pi/.local/lib/python3.5/site-packages/numpy")
+# sys.path.append("/home/pi/.local/lib/python3.5/site-packages/numpy/core")
 
 from lcdmodule import LCD
 from tempModule import actTemp
@@ -74,7 +68,7 @@ lcd16 = LCD()
 time.sleep(10)                            # display welcome msg
 
 # output log file
-logName = "mashTemp.log"
+logName = "/home/pi/mashTemp.log"
 with open(logName, 'w') as mtl:
     date1 = time.strftime("%Y-%m-%d")
     s = 'Mash Temperature Log for ' + date1 + "\n"
@@ -127,7 +121,7 @@ with open(logName, 'w') as mtl:
     if DEBUG: print("stopping mash control")
     pled.stop()
     plt.plot( 'timestamp', 'temp', data=tempHist)
-    plt.savefig('plotTemp.png', format='png')
+    plt.savefig('/home/pi/plotTemp.png', format='png')
     avg = tempHist['temp'].mean()
     max = tempHist['temp'].max()
     min = tempHist['temp'].min()
