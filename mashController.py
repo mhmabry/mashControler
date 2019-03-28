@@ -13,12 +13,15 @@ sys.path.append("/home/pi")               # to find local modules from init.d di
 
 from lcdmodule import LCD
 from tempModule import actTemp
+from tempModule import setTemp
 import pandas as pd
+from pandas.plotting import register_matplotlib_converters
 if DEBUG: print('after pandas')
 import RPi.GPIO as GPIO
 import matplotlib.pyplot as plt
 if DEBUG: print('after imports')
 
+register_matplotlib_converters() #explicitly registering a datetime converter for matplotlib with pandas
 
 ##
 ## Instructions for thermometer setup
@@ -44,13 +47,18 @@ os.system('/sbin/modprobe w1-therm')
 
 #sensor id
 # TEMP_ID_2 = '28-80000027bc2f'   # temp probe from amazon
-#TEMP_ID_3 = '28-01186e97a1ff'    # Loose temp sensor
+TEMP_ID_3 = '28-01186e97a1ff'    # Loose temp sensor
 TEMP_ID_1 = '28-01186e9576ff'    # temp sensor in RIMS thermowell
-rt = actTemp(TEMP_ID_1) # actTemp class for RIMS temp sensor
+rt = actTemp(TEMP_ID_3) # actTemp class for RIMS temp sensor
+
+##
+## Buttons and LED
+##
 
 # GPIO setup
 GPIO.setmode(GPIO.BOARD)
 
+# LED setup
 PINKLED = 12
 GPIO.setup(PINKLED, GPIO.OUT, initial=GPIO.LOW)
 pled = GPIO.PWM(PINKLED, 1)             # freq = 1 Hz
@@ -60,7 +68,30 @@ STOPB = 36
 GPIO.setup(STOPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(STOPB, GPIO.FALLING)
 
-# Dataframe for log temps
+# instantiate Actual Temp class
+tt = setTemp()
+
+# Up temp button
+UPB = 11
+GPIO.setup(UPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(UPB, GPIO.FALLING, callback=(lambda x: tt.upTemp()))
+
+# Down temp button
+DOWNB = 13
+GPIO.setup(DOWNB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()))
+
+##
+## PWM for heater
+##
+# PWM config in /boot/config.txt uses default pins
+# GPIO_18 = PWM0
+# GPIO_19 = PWM1
+
+
+##
+## Dataframe for log temps
+##
 tempHist = pd.DataFrame(columns=['timestamp', 'temp'])
 
 #instantiate LCD class
@@ -74,7 +105,7 @@ with open(logName, 'w') as mtl:
     s = 'Mash Temperature Log for ' + date1 + "\n"
     mtl.write(s)
 
-    pled.start(50) # Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec
+    pled.start(50) # Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec (freq=0.5Hz)
     i = 0
 
     try:
@@ -90,7 +121,7 @@ with open(logName, 'w') as mtl:
             tempF = rt.read_temp_f()
 
             #save to dataframe
-            tempHist = tempHist.append({'timestamp' : ts, 'temp' : tempF}, ignore_index=True)  # append using dictionary
+            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), 'temp' : tempF}, ignore_index=True)  # append using dictionary
 
             # create graph
             # i = (i +1) %12
@@ -103,7 +134,8 @@ with open(logName, 'w') as mtl:
             mtl.write(pstr)
     
             ## display temp
-            vv = "Temp: " + str(tempF) + chr(223) + "F"
+            vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
+            vv += "Set:  " + str(tt.target) + chr(223) + "F "  # \r moves to the beginning of the line
             lcd16.cursor_pos(0,0)
             lcd16.write_string(vv)
 
@@ -113,22 +145,37 @@ with open(logName, 'w') as mtl:
                 print(pstr)
     
             ## sleep til next go round
-            time.sleep(5)
+            time.sleep(3)
 
-    except:
-        print("Error= ", sys.exc_info())
+    except KeyboardInterrupt:
+        pass
 
-    if DEBUG: print("stopping mash control")
+    if DEBUG: print("\nStopping mash control")
     pled.stop()
+
+    # Plot the mash temp over time
+    dt = time.strftime("%Y-%m-%d", time.localtime())
+    plt.ylabel("Temp F")
+    plt.title("Mash Temperature " + dt)
     plt.plot( 'timestamp', 'temp', data=tempHist)
-    plt.savefig('/home/pi/plotTemp.png', format='png')
-    avg = tempHist['temp'].mean()
-    max = tempHist['temp'].max()
-    min = tempHist['temp'].min()
-    s = "Temp stats:  avg=" + str(avg) + " min=" + str(min) + " max=" + str(max) + "\n"
+    plotfile = "/home/pi/plotTemp" + dt + ".png"
+    plt.savefig(plotfile, format='png')
+
+    # Mash temp statistics
+    # avg = tempHist['temp'].mean()
+    # max = tempHist['temp'].max()
+    # min = tempHist['temp'].min()
+    # s = "Temp stats:  avg=" + str(avg) + " min=" + str(min) + " max=" + str(max) + "\n"
+    s = tempHist.describe().to_string() + "\n"
     mtl.write(s)
 
+    # Tell user that files are saved
+    lcd16.clear()
+    lcd16.write_string("Files saved")
+
 mtl.closed
-pled.stop()
+lf = logName[0:-4] + dt + ".log"
+cmd = "mv " + logName + " " + lf
+os.system(cmd)
 GPIO.cleanup()
 

@@ -5,7 +5,7 @@ from RPLCD.gpio import CharLCD
 class LCD():
     def __init__(self):
         self.lcd = CharLCD(cols=16, rows=2,
-                                    pin_rs=15, pin_rw=18, pin_e=16,
+                                    pin_rs=15, pin_e=16,
                                     pins_data=[21, 22, 23, 24],
                                     numbering_mode=GPIO.BOARD,
                                     compat_mode=True)

@@ -7,11 +7,11 @@ class setTemp:
     def __init__(self):
         self.target = 100.0  # degrees F
 
-    def up(self):
-        self.target += 0.5
+    def upTemp(self):
+        self.target += 1.0
 
-    def down(self):
-        self.target -= 0.5
+    def downTemp(self):
+        self.target -= 1.0
 
 ##
 ## Actual Temp Class
