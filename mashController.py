@@ -14,6 +14,8 @@ sys.path.append("/home/pi")               # to find local modules from init.d di
 from lcdmodule import LCD
 from tempModule import actTemp
 from tempModule import setTemp
+from pwmModule import PWM
+
 import pandas as pd
 from pandas.plotting import register_matplotlib_converters
 if DEBUG: print('after pandas')
@@ -59,7 +61,7 @@ rt = actTemp(TEMP_ID_3) # actTemp class for RIMS temp sensor
 GPIO.setmode(GPIO.BOARD)
 
 # LED setup
-PINKLED = 12
+PINKLED = 40
 GPIO.setup(PINKLED, GPIO.OUT, initial=GPIO.LOW)
 pled = GPIO.PWM(PINKLED, 1)             # freq = 1 Hz
 
@@ -74,12 +76,12 @@ tt = setTemp()
 # Up temp button
 UPB = 11
 GPIO.setup(UPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.add_event_detect(UPB, GPIO.FALLING, callback=(lambda x: tt.upTemp()))
+GPIO.add_event_detect(UPB, GPIO.FALLING, callback=(lambda x: tt.upTemp()), bouncetime=400)
 
 # Down temp button
 DOWNB = 13
 GPIO.setup(DOWNB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()))
+GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), bouncetime=400)
 
 ##
 ## PWM for heater
@@ -87,7 +89,10 @@ GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()))
 # PWM config in /boot/config.txt uses default pins
 # GPIO_18 = PWM0
 # GPIO_19 = PWM1
-
+heater = PWM(0)
+heater.period = 2 * 1e9                   # 2 second period
+heater.dutyCyclePercent(0.25)
+heater.start()
 
 ##
 ## Dataframe for log temps
@@ -121,7 +126,8 @@ with open(logName, 'w') as mtl:
             tempF = rt.read_temp_f()
 
             #save to dataframe
-            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), 'temp' : tempF}, ignore_index=True)  # append using dictionary
+            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), 'temp' : tempF},
+                                                       ignore_index=True)  # append using dictionary
 
             # create graph
             # i = (i +1) %12
@@ -151,6 +157,7 @@ with open(logName, 'w') as mtl:
         pass
 
     if DEBUG: print("\nStopping mash control")
+    heater.stop()
     pled.stop()
 
     # Plot the mash temp over time
@@ -173,7 +180,7 @@ with open(logName, 'w') as mtl:
     lcd16.clear()
     lcd16.write_string("Files saved")
 
-mtl.closed
+
 lf = logName[0:-4] + dt + ".log"
 cmd = "mv " + logName + " " + lf
 os.system(cmd)
