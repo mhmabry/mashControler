@@ -20,7 +20,7 @@ class PWM:
     def period(self, ns):
         self._period = int(ns)
         s='{:d}'.format(self._period)
-        print("pwm period=" + s + "\n")
+        if DEBUG: print("pwm period=" + s + "\n")
         with open(self.path + '/period', 'w') as f:
             f.write(s)
 
@@ -31,7 +31,7 @@ class PWM:
     @dutyCycle.setter
     def dutyCycle(self, dcns):
         self._dutyCycle = int(dcns)
-        print("pwm dc=" + str(self._dutyCycle) + "\n")
+        if DEBUG: print("pwm dc=" + str(self._dutyCycle) + "\n")
         with open(self.path + '/duty_cycle', 'w') as f:
             f.write('{:d}'.format(self._dutyCycle))
 
@@ -52,10 +52,10 @@ class PWM:
         with open(self.path +'/enable', 'w') as f:
             if v:
                 f.write('1')
-                print("Starting pwm")
+                if DEBUG: print("Starting pwm")
             else:
                 f.write('0')
-                print("Stopping pwm")
+                if DEBUG: print("Stopping pwm")
 
     def start(self):
         self.enable = 1

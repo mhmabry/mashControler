@@ -2,23 +2,22 @@
 
 DEBUG = 1
 
-if DEBUG: print('starting program')
+#if DEBUG: print('starting program')
 import os
 import time
 import sys
 sys.path.append("/home/pi")               # to find local modules from init.d dir
-# sys.path.append("/home/pi/.local/lib/python3.5/site-packages")
-# Sys.path.append("/home/pi/.local/lib/python3.5/site-packages/numpy")
-# sys.path.append("/home/pi/.local/lib/python3.5/site-packages/numpy/core")
 
 from lcdmodule import LCD
 from tempModule import actTemp
 from tempModule import setTemp
 from pwmModule import PWM
 
+from simple_pid import PID
+
 import pandas as pd
 from pandas.plotting import register_matplotlib_converters
-if DEBUG: print('after pandas')
+#if DEBUG: print('after pandas')
 import RPi.GPIO as GPIO
 import matplotlib.pyplot as plt
 if DEBUG: print('after imports')
@@ -91,13 +90,17 @@ GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), b
 # GPIO_19 = PWM1
 heater = PWM(0)
 heater.period = 2 * 1e9                   # 2 second period
-heater.dutyCyclePercent(0.25)
-heater.start()
+heater.dutyCyclePercent(0.0)
+
 
 ##
-## Dataframe for log temps
+## PID controller
 ##
-tempHist = pd.DataFrame(columns=['timestamp', 'temp'])
+kp = 1
+ki = 0
+kd = 0
+pid = PID(kp, ki, kd, setpoint=tt.target)
+pid.output_limits = (0, 255)
 
 #instantiate LCD class
 lcd16 = LCD()
@@ -112,12 +115,11 @@ with open(logName, 'w') as mtl:
 
     pled.start(50) # Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec (freq=0.5Hz)
     i = 0
+    # read temp once to get the random temp out of there
+    tempF = rt.read_temp_f()
+    #if (DEBUG): print("after read_temp_f call")
 
     try:
-        # read temp once to get the random temp out of there
-        tempF = rt.read_temp_f()
-        if (DEBUG): print("after read_temp_f call")
-
         #Loop to read temp
         while GPIO.event_detected(STOPB) == False:
             # Generate timestamp
@@ -161,7 +163,7 @@ with open(logName, 'w') as mtl:
     pled.stop()
 
     # Plot the mash temp over time
-    dt = time.strftime("%Y-%m-%d", time.localtime())
+    dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
     plt.ylabel("Temp F")
     plt.title("Mash Temperature " + dt)
     plt.plot( 'timestamp', 'temp', data=tempHist)
