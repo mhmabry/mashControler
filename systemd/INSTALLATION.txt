@@ -1,0 +1,3 @@
+To use the above, drop the unit file into /etc/systemd/system/rpi-configure-pwm.service, and drop the script into /usr/bin/rpi-configure-pwm. Don't forget to systemctl enable rpi-configure-pwm.
+
+

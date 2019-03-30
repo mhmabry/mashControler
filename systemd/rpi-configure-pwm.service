@@ -1,0 +1,10 @@
+[Unit]
+Description=Configure PWM permissions
+Before=myapp.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rpi-configure-pwm
+
+[Install]
+WantedBy=multi-user.target

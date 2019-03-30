@@ -1,0 +1,2 @@
+run this.  One time only.
+systemctl enable rpi-configure-pwm
