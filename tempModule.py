@@ -1,11 +1,12 @@
+import time
 import glob
 
 ##
 ## Set Temp Class
 ##
 class setTemp:
-    def __init__(self):
-        self.target = 100.0  # degrees F
+    def __init__(self, target=75):
+        self.target = target  # degrees F
 
     def upTemp(self):
         self.target += 1.0
@@ -37,7 +38,7 @@ class actTemp:
         lines = self.readTempRow()
         while lines[0].strip()[-3:] != 'YES':
             time.sleep(0.2)
-            lines = readTempRow()
+            lines = self.readTempRow()
         equalsPosition = lines[1].find('t=')
         if equalsPosition != -1:
             self.tempRaw = lines[1][equalsPosition+2:]

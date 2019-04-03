@@ -1,6 +1,8 @@
 import sys
 import os
 
+DEBUG = 0
+
 class PWM:
     def __init__(self, chan=0):
         self.channel = chan
@@ -20,7 +22,7 @@ class PWM:
     def period(self, ns):
         self._period = int(ns)
         s='{:d}'.format(self._period)
-        if DEBUG: print("pwm period=" + s + "\n")
+        if DEBUG: print("pwm period=" + s)
         with open(self.path + '/period', 'w') as f:
             f.write(s)
 
@@ -31,7 +33,7 @@ class PWM:
     @dutyCycle.setter
     def dutyCycle(self, dcns):
         self._dutyCycle = int(dcns)
-        if DEBUG: print("pwm dc=" + str(self._dutyCycle) + "\n")
+        if DEBUG: print("pwm dc=" + str(self._dutyCycle))
         with open(self.path + '/duty_cycle', 'w') as f:
             f.write('{:d}'.format(self._dutyCycle))
 

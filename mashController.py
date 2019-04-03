@@ -50,7 +50,7 @@ os.system('/sbin/modprobe w1-therm')
 # TEMP_ID_2 = '28-80000027bc2f'   # temp probe from amazon
 TEMP_ID_3 = '28-01186e97a1ff'    # Loose temp sensor
 TEMP_ID_1 = '28-01186e9576ff'    # temp sensor in RIMS thermowell
-rt = actTemp(TEMP_ID_3) # actTemp class for RIMS temp sensor
+rt = actTemp(TEMP_ID_1) # actTemp class for RIMS temp sensor
 
 ##
 ## Buttons and LED
@@ -69,8 +69,8 @@ STOPB = 36
 GPIO.setup(STOPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(STOPB, GPIO.FALLING)
 
-# instantiate Actual Temp class
-tt = setTemp()
+# instantiate Actual Temp class150)
+tt = setTemp(100)
 
 # Up temp button
 UPB = 11
@@ -91,16 +91,21 @@ GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), b
 heater = PWM(0)
 heater.period = 2 * 1e9                   # 2 second period
 heater.dutyCyclePercent(0.0)
-
+heater.start()
 
 ##
 ## PID controller
 ##
-kp = 1
-ki = 0
-kd = 0
-pid = PID(kp, ki, kd, setpoint=tt.target)
+kp = 4.626476953296487
+ki = 0.136835463342823
+kd = 23.48611404618335
+pid = PID(kp, ki, kd, setpoint=0, sample_time=4)
 pid.output_limits = (0, 255)
+
+##
+## Dataframe for log temps
+##
+tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target'])
 
 #instantiate LCD class
 lcd16 = LCD()
@@ -128,8 +133,10 @@ with open(logName, 'w') as mtl:
             tempF = rt.read_temp_f()
 
             #save to dataframe
-            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), 'temp' : tempF},
-                                                       ignore_index=True)  # append using dictionary
+            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), \
+                                        'temp' : tempF, \
+                                        'target' : tt.target}, \
+                                       ignore_index=True)  # append using dictionary
 
             # create graph
             # i = (i +1) %12
@@ -149,9 +156,17 @@ with open(logName, 'w') as mtl:
 
             ## Write console window
             if (DEBUG):
-                pstr = ts + " ActualTemp: " +  str(tempF)
+                pstr = "\n" + ts + " ActualTemp: " +  str(tempF)
                 print(pstr)
-    
+
+            # PID call
+            errTemp = tempF - tt.target # seems to be how simple_pid want it
+            outPID = pid(errTemp)
+            s = "errTemp={:.1f}".format(errTemp) + " outPID={:.1f}".format(outPID)
+            if DEBUG: print(s)
+            if DEBUG: print(str(pid.components))
+            heater.dutyCyclePercent(outPID/256)
+                
             ## sleep til next go round
             time.sleep(3)
 
@@ -162,21 +177,27 @@ with open(logName, 'w') as mtl:
     heater.stop()
     pled.stop()
 
-    # Plot the mash temp over time
+    ##
+    ## Plot the mash temp over time
+    ##
     dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
     plt.ylabel("Temp F")
-    plt.title("Mash Temperature " + dt)
-    plt.plot( 'timestamp', 'temp', data=tempHist)
+    pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
+    plt.title("Mash Temperature " + pidtxt)
+    plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
+    plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
     plotfile = "/home/pi/plotTemp" + dt + ".png"
     plt.savefig(plotfile, format='png')
 
     # Mash temp statistics
-    # avg = tempHist['temp'].mean()
-    # max = tempHist['temp'].max()
-    # min = tempHist['temp'].min()
-    # s = "Temp stats:  avg=" + str(avg) + " min=" + str(min) + " max=" + str(max) + "\n"
     s = tempHist.describe().to_string() + "\n"
     mtl.write(s)
+
+    ##
+    ## Save dataframe to csv
+    ##
+    dff = "/home/pi/tempHist" + dt + ".csv"
+    tempHist.to_csv(dff)
 
     # Tell user that files are saved
     lcd16.clear()
