@@ -3,3 +3,4 @@ plotTemp*.png
 old
 plots_logs
 pidTune
+.DS_store
