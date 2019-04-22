@@ -20,6 +20,8 @@ from pandas.plotting import register_matplotlib_converters
 #if DEBUG: print('after pandas')
 import RPi.GPIO as GPIO
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.dates as mdates
 if DEBUG: print('after imports')
 
 register_matplotlib_converters() #explicitly registering a datetime converter for matplotlib with pandas
@@ -38,6 +40,7 @@ register_matplotlib_converters() #explicitly registering a datetime converter fo
 ##     For example, in my case I would enter: cd 28-000006637696
 ## 8. Enter cat w1_slave which will show the raw temperature reading output by the sensor
 ## 9. Assign the device number (eg. 28-XXXXXXXXXXXX) to TEMP_ID_1 in code below
+
 
 ##
 ## thermometer setup
@@ -64,13 +67,13 @@ PINKLED = 40
 GPIO.setup(PINKLED, GPIO.OUT, initial=GPIO.LOW)
 pled = GPIO.PWM(PINKLED, 1)             # freq = 1 Hz
 
-# stop button
+# stop button or Mode button
 STOPB = 36
 GPIO.setup(STOPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(STOPB, GPIO.FALLING)
 
 # instantiate Actual Temp class150)
-tt = setTemp(100)
+tt = setTemp(150)
 
 # Up temp button
 UPB = 11
@@ -81,6 +84,15 @@ GPIO.add_event_detect(UPB, GPIO.FALLING, callback=(lambda x: tt.upTemp()), bounc
 DOWNB = 13
 GPIO.setup(DOWNB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), bouncetime=400)
+
+###
+###
+### Modes ??
+###
+### Could have these modes: 
+### 1) mashing
+### 2) just display current temp and allow target to be set
+### 3) cip - temp control, but no logging
 
 ##
 ## PWM for heater
@@ -109,7 +121,7 @@ tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target'])
 
 #instantiate LCD class
 lcd16 = LCD()
-time.sleep(10)                            # display welcome msg
+time.sleep(8)                            # display welcome msg
 
 # output log file
 logName = "/home/pi/mashTemp.log"
@@ -124,9 +136,11 @@ with open(logName, 'w') as mtl:
     tempF = rt.read_temp_f()
     #if (DEBUG): print("after read_temp_f call")
 
+    # heater started
+    #heaterStarted = 0
     try:
         #Loop to read temp
-        while GPIO.event_detected(STOPB) == False:
+        while (GPIO.event_detected(STOPB) == False):
             # Generate timestamp
             ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
             #read temp
@@ -151,6 +165,10 @@ with open(logName, 'w') as mtl:
             ## display temp
             vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
             vv += "Set:  " + str(tt.target) + chr(223) + "F "  # \r moves to the beginning of the line
+            # if (heaterStarted == 0):
+            #     vv += "noht"
+            # else:
+            #     vv += "    "
             lcd16.cursor_pos(0,0)
             lcd16.write_string(vv)
 
@@ -170,6 +188,11 @@ with open(logName, 'w') as mtl:
             ## sleep til next go round
             time.sleep(3)
 
+            # Heater won't starte until first Mode button press
+            # if (heaterStarted == 0 & GPIO.event_detected(STOPB) == True):
+            #     heaterStarted = 1
+            #     heater.start()
+
     except KeyboardInterrupt:
         pass
 
@@ -181,9 +204,15 @@ with open(logName, 'w') as mtl:
     ## Plot the mash temp over time
     ##
     dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
+    mashTsFmt = mdates.DateFormatter("%H:%M")
     plt.ylabel("Temp F")
-    pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
-    plt.title("Mash Temperature " + pidtxt)
+    plt.xlabel("Time (Hour:Min)")
+    #pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
+    plt.title("Mash Temperature " + dt)
+    ax = plt.axes()
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(6))   # set max xticks to 6
+    ax.xaxis.set_major_formatter(mashTsFmt)
+    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
     plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
     plotfile = "/home/pi/plotTemp" + dt + ".png"
@@ -207,5 +236,14 @@ with open(logName, 'w') as mtl:
 lf = logName[0:-4] + dt + ".log"
 cmd = "mv " + logName + " " + lf
 os.system(cmd)
-GPIO.cleanup()
 
+# wait for button press to shut down
+while (GPIO.event_detected(STOPB) == False):
+    time.sleep(1)
+
+# shutdown
+lcd16.clear()
+lcd16.write_string("Shutdown now")
+GPIO.cleanup()
+cmd = "sudo shutdown -h now"
+os.system(cmd)
