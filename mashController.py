@@ -85,15 +85,6 @@ DOWNB = 13
 GPIO.setup(DOWNB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), bouncetime=400)
 
-###
-###
-### Modes ??
-###
-### Could have these modes: 
-### 1) mashing
-### 2) just display current temp and allow target to be set
-### 3) cip - temp control, but no logging
-
 ##
 ## PWM for heater
 ##
@@ -103,147 +94,260 @@ GPIO.add_event_detect(DOWNB, GPIO.FALLING, callback=(lambda x: tt.downTemp()), b
 heater = PWM(0)
 heater.period = 2 * 1e9                   # 2 second period
 heater.dutyCyclePercent(0.0)
-heater.start()
 
 ##
 ## PID controller
 ##
-kp = 4.626476953296487
-ki = 0.136835463342823
-kd = 23.48611404618335
+# Tune with water
+# kp = 4.626476953296487
+# ki = 0.136835463342823
+#kd = 23.48611404618335
+#
+# Tune from 1.065 mash
+kp = 360
+ki = 8
+kd = 0
+
 pid = PID(kp, ki, kd, setpoint=0, sample_time=4)
 pid.output_limits = (0, 255)
 
 ##
-## Dataframe for log temps
+## Instantiate LCD class
 ##
-tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target'])
-
-#instantiate LCD class
 lcd16 = LCD()
 time.sleep(8)                            # display welcome msg
 
-# output log file
-logName = "/home/pi/mashTemp.log"
-with open(logName, 'w') as mtl:
-    date1 = time.strftime("%Y-%m-%d")
-    s = 'Mash Temperature Log for ' + date1 + "\n"
-    mtl.write(s)
+    
 
-    pled.start(50) # Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec (freq=0.5Hz)
-    i = 0
+def mashControl():
+    tt.setTemp(151)                         # set default temp for mashing
+
+    ## Start heater
+    heater.start()
+
+    ##
+    ## Dataframe for log temps
+    ##
+    tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target'])
+
+    # output log file
+    logName = "/home/pi/mashTemp.log"
+    with open(logName, 'w') as mtl:
+        date1 = time.strftime("%Y-%m-%d")
+        s = 'Mash Temperature Log for ' + date1 + "\n"
+        mtl.write(s)
+        # LED Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec (freq=0.5Hz) 
+        pled.start(50) 
+        # read temp once to get the random temp out of there
+        tempF = rt.read_temp_f()
+        try:
+            #Loop to read temp
+            while (GPIO.event_detected(STOPB) == False):
+                # Generate timestamp
+                ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
+                #read temp
+                tempF = rt.read_temp_f()
+    
+                #save to dataframe
+                tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), \
+                                            'temp' : tempF, \
+                                            'target' : tt.target}, \
+                                           ignore_index=True)  # append using dictionary
+    
+                ## Write Logfile
+                pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
+                mtl.write(pstr)
+
+                lcdTemp(tempF, tt.target)   # display temp
+    
+                ## Write console window
+                if (DEBUG):
+                    pstr = "\n" + ts + " ActualTemp: " +  str(tempF)
+                    print(pstr)
+    
+                # PID call
+                errTemp = tempF - tt.target # seems to be how simple_pid want it
+                outPID = pid(errTemp)
+                heater.dutyCyclePercent(outPID/256)
+                if DEBUG:
+                    s = "errTemp={:.1f}".format(errTemp) + " outPID={:.1f}".format(outPID)
+                    print(s)
+                    print(str(pid.components))
+                    
+                ## sleep til next go round
+                time.sleep(3)
+    
+        # allows Control-C to stop loop without printing a trace
+        except KeyboardInterrupt:
+            pass
+    
+        if DEBUG: print("\nStopping mash control")
+
+        heater.stop()
+        pled.stop()
+    
+        ##
+        ## Plot the mash temp over time
+        ##
+        dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
+        mashTsFmt = mdates.DateFormatter("%H:%M")
+        plt.ylabel("Temp F")
+        plt.xlabel("Time (Hour:Min)")
+        #pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
+        plt.title("Mash Temperature " + dt)
+        ax = plt.axes()
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(7))   # set max xticks to 6
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_major_formatter(mashTsFmt)
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
+        plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
+        plotfile = "/home/pi/plotTemp" + dt + ".png"
+        plt.savefig(plotfile, format='png')
+    
+        # Mash temp statistics
+        s = tempHist.describe().to_string() + "\n"
+        mtl.write(s)
+    
+        ##
+        ## Save dataframe to csv
+        ##
+        dff = "/home/pi/tempHist" + dt + ".csv"
+        tempHist.to_csv(dff)
+    
+        # Tell user that files are saved
+        lcd16.clear()
+        lcd16.write_string("Files saved")
+        time.sleep(2)
+        
+    lf = logName[0:-4] + dt + ".log"
+    cmd = "mv " + logName + " " + lf
+    os.system(cmd)
+                                         # end of mashControl
+
+##
+## CIP - clean in place mode
+##       - controls temp, but no logs or plot
+##
+def cip():
+    tt.setTemp(130)                         # set default temp for cip
+
+    heater.start()                              # Start heater
+    pled.start(35)                              # duty cycle = 35%
+
     # read temp once to get the random temp out of there
     tempF = rt.read_temp_f()
-    #if (DEBUG): print("after read_temp_f call")
 
-    # heater started
-    #heaterStarted = 0
     try:
         #Loop to read temp
         while (GPIO.event_detected(STOPB) == False):
-            # Generate timestamp
-            ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
             #read temp
             tempF = rt.read_temp_f()
-
-            #save to dataframe
-            tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), \
-                                        'temp' : tempF, \
-                                        'target' : tt.target}, \
-                                       ignore_index=True)  # append using dictionary
-
-            # create graph
-            # i = (i +1) %12
-            # if (i == 0):
-            #     plt.plot( 'timestamp', 'temp', data=tempHist)
-            #     plt.savefig('plotTemp.png', format='png')
-
-            ## Write Logfile
-            pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
-            mtl.write(pstr)
     
             ## display temp
-            vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
-            vv += "Set:  " + str(tt.target) + chr(223) + "F "  # \r moves to the beginning of the line
-            # if (heaterStarted == 0):
-            #     vv += "noht"
-            # else:
-            #     vv += "    "
-            lcd16.cursor_pos(0,0)
-            lcd16.write_string(vv)
-
-            ## Write console window
-            if (DEBUG):
-                pstr = "\n" + ts + " ActualTemp: " +  str(tempF)
-                print(pstr)
+            lcdTemp(tempF, tt.target)
 
             # PID call
             errTemp = tempF - tt.target # seems to be how simple_pid want it
             outPID = pid(errTemp)
-            s = "errTemp={:.1f}".format(errTemp) + " outPID={:.1f}".format(outPID)
-            if DEBUG: print(s)
-            if DEBUG: print(str(pid.components))
             heater.dutyCyclePercent(outPID/256)
-                
+
             ## sleep til next go round
             time.sleep(3)
-
-            # Heater won't starte until first Mode button press
-            # if (heaterStarted == 0 & GPIO.event_detected(STOPB) == True):
-            #     heaterStarted = 1
-            #     heater.start()
-
+    
+        # allows Control-C to stop loop without printing a trace
     except KeyboardInterrupt:
         pass
-
-    if DEBUG: print("\nStopping mash control")
+    
     heater.stop()
     pled.stop()
-
-    ##
-    ## Plot the mash temp over time
-    ##
-    dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
-    mashTsFmt = mdates.DateFormatter("%H:%M")
-    plt.ylabel("Temp F")
-    plt.xlabel("Time (Hour:Min)")
-    #pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
-    plt.title("Mash Temperature " + dt)
-    ax = plt.axes()
-    ax.xaxis.set_major_locator(ticker.MaxNLocator(6))   # set max xticks to 6
-    ax.xaxis.set_major_formatter(mashTsFmt)
-    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
-    plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
-    plotfile = "/home/pi/plotTemp" + dt + ".png"
-    plt.savefig(plotfile, format='png')
-
-    # Mash temp statistics
-    s = tempHist.describe().to_string() + "\n"
-    mtl.write(s)
-
-    ##
-    ## Save dataframe to csv
-    ##
-    dff = "/home/pi/tempHist" + dt + ".csv"
-    tempHist.to_csv(dff)
-
-    # Tell user that files are saved
     lcd16.clear()
-    lcd16.write_string("Files saved")
+    if DEBUG: print("\nStopping cip")
 
+def tempMonitor():
+    # LED Duty cycle = 50%.  So every 2 seconds, it is on for 1 second, then off for 1 sec (freq=0.5Hz) 
+    pled.start(50) 
 
-lf = logName[0:-4] + dt + ".log"
-cmd = "mv " + logName + " " + lf
-os.system(cmd)
+    # read temp once to get the random temp out of there
+    tempF = rt.read_temp_f()
 
-# wait for button press to shut down
-while (GPIO.event_detected(STOPB) == False):
-    time.sleep(1)
+    try:
+        #Loop to read temp
+        while (GPIO.event_detected(STOPB) == False):
+            #read temp
+            tempF = rt.read_temp_f()
+    
+            ## display temp
+            lcdTemp(tempF, tt.target)
 
-# shutdown
+            ## sleep til next go round
+            time.sleep(3)
+    
+        # allows Control-C to stop loop without printing a trace
+    except KeyboardInterrupt:
+        pass
+    
+    pled.stop()
+    lcd16.clear()
+    if DEBUG: print("\nStopping temp monitor")
+
+def lcdTemp(tempF, target):
+    vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
+    lcd16.cursor_pos(0,0)
+    lcd16.write_string(vv)
+    
+
+# shutdown the Pi
+def shutdown():
+    lcd16.clear()
+    lcd16.write_string("Shutdown now")
+    GPIO.cleanup()
+    cmd = "sudo shutdown -h now"
+    os.system(cmd)
+
+###
+### Modes
+###
+### These modes: 
+### 1) mashing
+### 2) just display current temp and allow target to be set
+### 3) cip - temp control, but no logging
+### 4) shutdown RPi
+###
+### use mode button to exit the mode and go back to main menu
+###
+choice = [ "1-Temp Monitor",
+                 "2-Mashing       ",
+                 "3-CIP              ",
+                 "4-Shutdown    " ]
+modes = {
+    0 : tempMonitor,
+    1 : mashControl,
+    2 : cip,
+    3 : shutdown
+    }
+
+firstLine = "Select mode: "
 lcd16.clear()
-lcd16.write_string("Shutdown now")
-GPIO.cleanup()
-cmd = "sudo shutdown -h now"
-os.system(cmd)
+lcd16.cursor_pos(0,0)
+lcd16.write_string(firstLine)
+modeChoice = 0
+while True:
+    lcd16.clear()
+    lcd16.cursor_pos(0,0)
+    lcd16.write_string(firstLine)
+    lcd16.cursor_pos(1,0)
+    lcd16.write_string(choice[modeChoice])
+
+    if (GPIO.event_detected(UPB)):
+        if (modeChoice == 0):
+            modeChoice = 3
+        else:
+            modeChoice -= 1
+    elif (GPIO.event_detected(DOWNB)):
+        modeChoice = (modeChoice + 1) % 4
+    elif (GPIO.event_detected(STOPB)):
+        # run the selection
+        func = modes.get(modeChoice)
+        func()
+    time.sleep(0.5)

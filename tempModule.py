@@ -14,6 +14,9 @@ class setTemp:
     def downTemp(self):
         self.target -= 1.0
 
+    def setTemp(self, tt):
+        self.target = tt 
+
 ##
 ## Actual Temp Class
 ##
