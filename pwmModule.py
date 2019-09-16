@@ -3,6 +3,17 @@ import os
 
 DEBUG = 0
 
+#######################################################
+#
+# Setting up the hardware PWM
+#
+# 1) Edit /boot/config.txt with sudo nano /boot/config.txt
+# 2) Add the following to the bottom of the file:
+#      dtoverlay=pwm
+# 3) Save and reboot
+#
+#######################################################
+
 class PWM:
     def __init__(self, chan=0):
         self.channel = chan

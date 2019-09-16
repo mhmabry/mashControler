@@ -70,7 +70,7 @@ pled = GPIO.PWM(PINKLED, 1)             # freq = 1 Hz
 # stop button or Mode button
 STOPB = 36
 GPIO.setup(STOPB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.add_event_detect(STOPB, GPIO.FALLING)
+GPIO.add_event_detect(STOPB, GPIO.FALLING, bouncetime=400)
 
 # instantiate Actual Temp class150)
 tt = setTemp(150)
@@ -104,9 +104,20 @@ heater.dutyCyclePercent(0.0)
 #kd = 23.48611404618335
 #
 # Tune from 1.065 mash
-kp = 360
-ki = 8
-kd = 0
+# kp = 360
+# ki = 8
+# kd = 0
+#
+# Scaled tune from 1.065 mash
+# kp = 205.76
+# ki = 14.647
+# kd=0
+
+# More Scaled tune from 1.065 mash
+kp = 115.65
+ki = 4.627
+kd=0
+
 
 pid = PID(kp, ki, kd, setpoint=0, sample_time=4)
 pid.output_limits = (0, 255)
@@ -158,7 +169,7 @@ def mashControl():
                 pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
                 mtl.write(pstr)
 
-                lcdTemp(tempF, tt.target)   # display temp
+                lcdTempAndSet(tempF, tt.target)   # display temp
     
                 ## Write console window
                 if (DEBUG):
@@ -295,11 +306,18 @@ def lcdTemp(tempF, target):
     vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
     lcd16.cursor_pos(0,0)
     lcd16.write_string(vv)
-    
+
+def lcdTempAndSet(tempF, target):
+    vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
+    vv += "Target: " + str(target) + chr(223) +"F"
+    lcd16.cursor_pos(0,0)
+    lcd16.write_string(vv)
+
 
 # shutdown the Pi
 def shutdown():
     lcd16.clear()
+    time.sleep(0.5)
     lcd16.write_string("Shutdown now")
     GPIO.cleanup()
     cmd = "sudo shutdown -h now"
@@ -333,20 +351,22 @@ lcd16.cursor_pos(0,0)
 lcd16.write_string(firstLine)
 modeChoice = 0
 while True:
-    lcd16.clear()
     lcd16.cursor_pos(0,0)
     lcd16.write_string(firstLine)
     lcd16.cursor_pos(1,0)
     lcd16.write_string(choice[modeChoice])
 
     if (GPIO.event_detected(UPB)):
+        lcd16.clear()
         if (modeChoice == 0):
             modeChoice = 3
         else:
             modeChoice -= 1
     elif (GPIO.event_detected(DOWNB)):
         modeChoice = (modeChoice + 1) % 4
+        lcd16.clear()
     elif (GPIO.event_detected(STOPB)):
+        lcd16.clear()
         # run the selection
         func = modes.get(modeChoice)
         func()

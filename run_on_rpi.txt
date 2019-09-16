@@ -1,0 +1,7 @@
+only need to set this up once:
+
+sudo nano /etc/modules
+
+add these two lines:
+w1_gpio
+w1_therm

@@ -1,0 +1,7 @@
+To have program start up automatically, add the line below to /etc/rc.local
+before the 'exit 0' line.
+
+sudo emacs /etc/rc.local
+
+Line to insert:
+sudo -u pi /home/pi/rims/mashController.py &
