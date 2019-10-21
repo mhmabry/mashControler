@@ -1,6 +1,10 @@
-To use the above, drop the unit file into
-/etc/systemd/system/rpi-configure-pwm.service, and drop the script
-into /usr/bin/rpi-configure-pwm. Don't forget to systemctl enable
-rpi-configure-pwm.
+To use hardware PWM:
+1) drop the unit file into
+/etc/systemd/system/rpi-configure-pwm.service
+2) drop the script into /usr/bin/rpi-configure-pwm.
+3) Don't forget to systemctl enable rpi-configure-pwm.
+4) edit /etc/config.txt and add this line to bottom:
+     dtoverlay=pwm-2chan
+5) reboot for config.txt to take effect
 
 
