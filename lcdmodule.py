@@ -3,14 +3,14 @@ from RPLCD.gpio import CharLCD
 
 #LCD class
 class LCD():
-    def __init__(self):
+    def __init__(self, name="masher"):
         self.lcd = CharLCD(cols=16, rows=2,
                                     pin_rs=15, pin_e=16,
                                     pins_data=[21, 22, 23, 24],
                                     numbering_mode=GPIO.BOARD,
                                     compat_mode=True)
         self.lcd.clear()
-        self.lcd.write_string("Hello masher")
+        self.lcd.write_string("Hello " + name)
 
     def close(self):
         self.lcd.close(clear=True)
