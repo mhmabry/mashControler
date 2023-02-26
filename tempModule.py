@@ -22,13 +22,14 @@ class setTemp:
 ##
 class actTemp:
 
-    def __init__(self, tempId):
+    def __init__(self, tempId, cal=0):
         base_dir = '/sys/bus/w1/devices/'
         self.device_folder = glob.glob(base_dir + tempId)[0]
         self.device_file =self.device_folder + '/w1_slave'
         self.tempRaw = ""
         self.tempC = -40
         self.tempF = -40
+        self.calOffset = cal              # adjustment in degrees F
         
     #read temp subroutine
     def readTempRow(self):
@@ -46,5 +47,6 @@ class actTemp:
         if equalsPosition != -1:
             self.tempRaw = lines[1][equalsPosition+2:]
             self.tempC = float(self.tempRaw)/1000.0
-            self.tempF = float(round((self.tempC / 5.0) * 9.0 + 32.0, 1))
+            self.tempF = float(round((self.tempC / 5.0) * 9.0 + 32.0 + self.calOffset,
+                                         1))
         return self.tempF

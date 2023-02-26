@@ -6,6 +6,8 @@ DEBUG = 1
 import os
 import time
 import sys
+import math
+import re
 sys.path.append("/home/pi")               # to find local modules from init.d dir
 
 from lcdmodule import LCD
@@ -50,10 +52,13 @@ os.system('/sbin/modprobe w1-gpio')
 os.system('/sbin/modprobe w1-therm')
 
 #sensor id
+# 1-wire sensors use GPIO04 - this is hard-wired in the driver
 # TEMP_ID_2 = '28-80000027bc2f'   # temp probe from amazon
 TEMP_ID_3 = '28-01186e97a1ff'    # Loose temp sensor
 TEMP_ID_1 = '28-01186e9576ff'    # temp sensor in RIMS thermowell
+TEMP_ID_4 = '28-01186d837fff'    # sensor in Mash Infussion thermowell
 rt = actTemp(TEMP_ID_1) # actTemp class for RIMS temp sensor
+mashRt = actTemp(TEMP_ID_4) # actTemp for Mash Infussion
 
 ##
 ## Buttons and LED
@@ -128,6 +133,16 @@ pid.output_limits = (0, 255)
 lcd16 = LCD()
 time.sleep(8)                            # display welcome msg
 
+def checkPiTemp():
+    temp = os.popen("vcgencmd measure_temp").readline()
+    m = re.search("temp=(?P<tempcel>-?\d+(?:\.\d+)?)", temp)
+    if m:
+        piTempC = m.group('tempcel')
+        #piTempF = m.group('tempcel') * 9 / 5 + 32
+        
+        return piTempC
+    else:
+        return -999
     
 
 def mashControl():
@@ -139,10 +154,10 @@ def mashControl():
     ##
     ## Dataframe for log temps
     ##
-    tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target'])
+    tempHist = pd.DataFrame(columns=['timestamp', 'temp', 'target', 'mashT'])
 
     # output log file
-    logName = "/home/pi/mashTemp.log"
+    logName = "/home/pi/rims/plots_logs/mashTemp.log"
     with open(logName, 'w') as mtl:
         date1 = time.strftime("%Y-%m-%d")
         s = 'Mash Temperature Log for ' + date1 + "\n"
@@ -151,6 +166,7 @@ def mashControl():
         pled.start(50) 
         # read temp once to get the random temp out of there
         tempF = rt.read_temp_f()
+        mashTempF = mashRt.read_temp_f()
         try:
             #Loop to read temp
             while (GPIO.event_detected(STOPB) == False):
@@ -158,18 +174,24 @@ def mashControl():
                 ts = time.strftime("%Y-%m-%dT%H:%M:%S ", time.localtime())
                 #read temp
                 tempF = rt.read_temp_f()
-    
+                mashTempF = mashRt.read_temp_f()    
+
                 #save to dataframe
-                tempHist = tempHist.append({'timestamp' : pd.to_datetime(ts), \
+                tempHist = tempHist.append({'timestamp' : ts, \
                                             'temp' : tempF, \
-                                            'target' : tt.target}, \
+                                            'target' : tt.target,
+                                            'mashT' : mashTempF}, \
                                            ignore_index=True)  # append using dictionary
     
+                # Is Mash Temp too high?
+                alert = True if (mashTempF - tt.target >= 4.0) else False
+                    
                 ## Write Logfile
-                pstr = ts + " ActualTemp: " +  str(tempF) + "\n"
+                pstr = ts + " ActualTemp: " +  str(tempF) + " MashT: " + str(mashTempF) + "\n"
+                pstr += ts + " MashT too high!!!\n" if alert else ""
                 mtl.write(pstr)
 
-                lcdTempAndSet(tempF, tt.target)   # display temp
+                lcdTempAndSet(tempF, tt.target, mashTempF, alert)   # display temp
     
                 ## Write console window
                 if (DEBUG):
@@ -184,6 +206,13 @@ def mashControl():
                     s = "errTemp={:.1f}".format(errTemp) + " outPID={:.1f}".format(outPID)
                     print(s)
                     print(str(pid.components))
+                    
+                ## Check Pi Internal Temp
+                piTC = checkPiTemp()
+                if float(piTC) >= 80.0:
+                    pstr = ts + "Pi internal temp too high: " + piTC + "\n"
+                    mtl.write(pstr)
+                    lcdTempPiHot(tempF, piTC)
                     
                 ## sleep til next go round
                 time.sleep(3)
@@ -200,21 +229,22 @@ def mashControl():
         ##
         ## Plot the mash temp over time
         ##
-        dt = time.strftime("%Y-%m-%dT%H-%M", time.localtime())
-        mashTsFmt = mdates.DateFormatter("%H:%M")
-        plt.ylabel("Temp F")
-        plt.xlabel("Time (Hour:Min)")
-        #pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
-        plt.title("Mash Temperature " + dt)
-        ax = plt.axes()
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(7))   # set max xticks to 6
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.xaxis.set_major_formatter(mashTsFmt)
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-        plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
-        plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
-        plotfile = "/home/pi/plotTemp" + dt + ".png"
-        plt.savefig(plotfile, format='png')
+        dt = time.strftime("%Y-%m-%dT%H:%M", time.localtime())
+        # mashTsFmt = mdates.DateFormatter("%H:%M")
+        # plt.ylabel("Temp F")
+        # plt.xlabel("Time (Hour:Min)")
+        # #pidtxt = '{:.3f} {:.3f} {:.3f}'.format(kp,ki,kd)
+        # plt.title("Mash Temperature " + dt)
+        # ax = plt.axes()
+        # ax.set_aspect(0.35)
+        # ax.xaxis.set_major_locator(ticker.MaxNLocator(7))   # set max xticks to 6
+        # ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        # ax.xaxis.set_major_formatter(mashTsFmt)
+        # ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        # plt.plot( 'timestamp', 'temp', data=tempHist, color='blue')
+        # plt.plot( 'timestamp', 'target', data=tempHist, color='yellow')
+        # plotfile = "/home/pi/rims/plots_logs/plotTemp" + dt + ".png"
+        # plt.savefig(plotfile, format='png')
     
         # Mash temp statistics
         s = tempHist.describe().to_string() + "\n"
@@ -223,7 +253,7 @@ def mashControl():
         ##
         ## Save dataframe to csv
         ##
-        dff = "/home/pi/tempHist" + dt + ".csv"
+        dff = "/home/pi/rims/plots_logs/tempHist" + dt + ".csv"
         tempHist.to_csv(dff)
     
         # Tell user that files are saved
@@ -280,7 +310,7 @@ def tempMonitor():
     pled.start(50) 
 
     # read temp once to get the random temp out of there
-    tempF = rt.read_temp_f()
+    tempF = mashRt.read_temp_f()
 
     try:
         #Loop to read temp
@@ -307,9 +337,17 @@ def lcdTemp(tempF, target):
     lcd16.cursor_pos(0,0)
     lcd16.write_string(vv)
 
-def lcdTempAndSet(tempF, target):
+def lcdTempAndSet(tempF, target, mashTempF, alert):
+    vv = "Temp: " + str(tempF) + chr(223) + "F "
+    # display to exclamations, if Mash Temp too high
+    vv += "!!\r\n" if alert else "\r\n"   #\n moves down 1 line
+    vv += "Set: " + str(math.trunc(target)) + " M:" + str(mashTempF)
+    lcd16.cursor_pos(0,0)
+    lcd16.write_string(vv)
+
+def lcdTempPiHot(tempF, piTC):
     vv = "Temp: " + str(tempF) + chr(223) + "F \r\n"   #\n moves down 1 line
-    vv += "Target: " + str(target) + chr(223) +"F"
+    vv += "Pi: " + piTC 
     lcd16.cursor_pos(0,0)
     lcd16.write_string(vv)
 
